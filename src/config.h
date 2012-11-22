@@ -61,5 +61,6 @@ gboolean config_get_hotkey_up_enabled();
 gboolean config_get_hotkey_down_enabled();
 gboolean config_get_hotkey_mute_enabled();
 gboolean config_get_transparent_background();
+gboolean config_get_play_feedback_sounds();
 
 #endif

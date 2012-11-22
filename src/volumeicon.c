@@ -91,6 +91,7 @@ static int (*backend_get_volume)(void) = NULL;
 static gboolean (*backend_get_mute)(void) = NULL;
 static const gchar * (*backend_get_channel)(void) = NULL;
 static const GList * (*backend_get_channel_names)(void) = NULL;
+static const gboolean (*backend_play_feedback)(void) = NULL;
 
 // Status
 static int m_volume = 0;
@@ -133,6 +134,7 @@ typedef struct
 	GtkCellRenderer * cra_hotkey;
 	GtkCellRendererToggle * crt_hotkey;
 	GtkCheckButton * use_transparent_background_checkbutton;
+GtkCheckButton * play_feedback_sound_checkbutton;
 } PreferencesGui;
 
 //##############################################################################
@@ -331,6 +333,16 @@ static void preferences_use_transparent_background_checkbutton_toggled(GtkCheckB
 	scale_setup();
 }
 
+static void preferences_play_feedback_sounds_checkbutton_toggled(GtkCheckButton * widget,
+	gpointer user_data)
+{
+	gboolean active = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
+	config_set_play_feedback_sounds(active);
+	gtk_widget_destroy(m_scale);
+	gtk_widget_destroy(m_scale_window);
+	scale_setup();
+}
+
 // Menu handlers
 static void menu_preferences_on_activate(GtkMenuItem * menuitem,
 	gpointer user_data)
@@ -360,6 +372,7 @@ static void menu_preferences_on_activate(GtkMenuItem * menuitem,
 	gui->cra_hotkey = GTK_CELL_RENDERER(getobj("cra_hotkey"));
 	gui->crt_hotkey = GTK_CELL_RENDERER_TOGGLE(getobj("crt_hotkey"));
 	gui->use_transparent_background_checkbutton = GTK_CHECK_BUTTON(getobj("use_transparent_background"));
+	gui->play_feedback_sound_checkbutton = GTK_CHECK_BUTTON(getobj("play_feedback_sound"));
 	#undef getobj
 
 	// Set the window icon
@@ -396,6 +409,9 @@ static void menu_preferences_on_activate(GtkMenuItem * menuitem,
 
 	gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gui->use_transparent_background_checkbutton),
 		config_get_use_transparent_background());
+
+	gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gui->play_feedback_sound_checkbutton),
+	config_get_play_feedback_sounds());
 
 	// Fill the channel model and combobox
 	GtkTreeIter tree_iter;
@@ -469,6 +485,8 @@ static void menu_preferences_on_activate(GtkMenuItem * menuitem,
 		preferences_crt_toggled), (gpointer)gui);
 	g_signal_connect(G_OBJECT(gui->use_transparent_background_checkbutton), "toggled", G_CALLBACK(
 		preferences_use_transparent_background_checkbutton_toggled), (gpointer)gui);
+	g_signal_connect(G_OBJECT(gui->play_feedback_sound_checkbutton), "toggled", G_CALLBACK(
+		preferences_play_feedback_sounds_checkbutton_toggled), (gpointer)gui);
 
 	gtk_widget_show_all(gui->window);
 }
@@ -600,6 +618,8 @@ static void status_icon_on_button_release(GtkStatusIcon * status_icon,
 static void status_icon_on_scroll_event(GtkStatusIcon * status_icon,
 	GdkEventScroll * event, gpointer user_data)
 {
+	g_fprintf(stderr, "Hols\n");
+
 	switch(event->direction)
 	{
 		case(GDK_SCROLL_UP):
@@ -950,6 +970,9 @@ static void hotkey_handle(const char * key, void * user_data)
 		m_volume += (hotkey == UP ? step : -step);
 		m_volume = (m_volume > 100 ? 100 : (m_volume < 0 ? 0 : m_volume));
 		backend_set_volume(m_volume);
+		// Play a feedback sound if the user wants
+		if (config_get_play_feedback_sounds())
+			backend_play_feedback();
 		status_icon_update(m_mute, FALSE);
 	}
 	scale_update();
@@ -992,6 +1015,7 @@ int main(int argc, char * argv[])
 	backend_get_mute = &oss_get_mute;
 	backend_get_channel = &oss_get_channel;
 	backend_get_channel_names = &oss_get_channel_names;
+	backend_play_feedback = &oss_play_feedback;
 	#else
 	backend_setup = &asound_setup;
 	backend_set_channel = &asound_set_channel;
@@ -1001,6 +1025,7 @@ int main(int argc, char * argv[])
 	backend_set_mute = &asound_set_mute;
 	backend_get_channel = &asound_get_channel;
 	backend_get_channel_names = &asound_get_channel_names;
+	backend_play_feedback = &asound_play_feedback;
 	#endif
 
 	// Setup

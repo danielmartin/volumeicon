@@ -1,4 +1,4 @@
-EXTRA_DIST = gui icons
+EXTRA_DIST = gui icons sounds
 
 install-data-local: uninstall-local
 	mkdir -p "$(DESTDIR)$(pkgdatadir)"; \

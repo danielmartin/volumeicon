@@ -1,5 +1,3 @@
-//##############################################################################
-// volumeicon
 //
 // config.c - a singleton providing configuration values/functions
 // 
@@ -53,6 +51,7 @@ static gboolean m_hotkey_up_enabled = FALSE;
 static gboolean m_hotkey_down_enabled = FALSE;
 static gboolean m_hotkey_mute_enabled = FALSE;
 static gboolean m_use_transparent_background = FALSE;
+static gboolean m_play_feedback_sounds = FALSE;
 
 //##############################################################################
 // Static functions
@@ -104,6 +103,7 @@ static void config_read()
 	m_hotkey_down_enabled = g_key_file_get_boolean(kf, "Hotkeys", "down_enabled", NULL);
 	m_hotkey_mute_enabled = g_key_file_get_boolean(kf, "Hotkeys", "mute_enabled", NULL);
 	m_use_transparent_background = g_key_file_get_boolean(kf, "StatusIcon", "use_transparent_background", NULL);
+	m_play_feedback_sounds = g_key_file_get_boolean(kf, "Sounds", "play_feedback_sounds", NULL);
 	g_key_file_free(kf);
 
 	// Load default values for unset keys
@@ -200,6 +200,11 @@ void config_set_use_transparent_background(gboolean active)
 	m_use_transparent_background = active;
 }
 
+void config_set_play_feedback_sounds(gboolean enabled)
+{
+	m_play_feedback_sounds = enabled;
+}	 
+
 const gchar * config_get_helper()
 {
 	return m_helper_program;
@@ -285,6 +290,11 @@ gboolean config_get_use_transparent_background()
 	return m_use_transparent_background;
 }
 
+gboolean config_get_play_feedback_sounds()
+{
+	return m_play_feedback_sounds;
+}
+
 void config_write()
 {
 	assert(m_config_file != NULL);
@@ -299,6 +309,7 @@ void config_write()
 	g_key_file_set_boolean(kf, "Hotkeys", "down_enabled", m_hotkey_down_enabled);
 	g_key_file_set_boolean(kf, "Hotkeys", "mute_enabled", m_hotkey_mute_enabled);
 	g_key_file_set_boolean(kf, "StatusIcon", "use_transparent_background", m_use_transparent_background);
+	g_key_file_set_boolean(kf, "Sounds", "play_feedback_sounds", m_play_feedback_sounds);
 	if(m_helper_program)
 		g_key_file_set_value(kf, "StatusIcon", "onclick", m_helper_program);
 	if(m_theme)

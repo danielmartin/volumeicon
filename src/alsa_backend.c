@@ -27,6 +27,11 @@
 
 #include "alsa_backend.h"
 
+#ifndef DATADIR
+#define DATADIR "../data"
+#endif
+#define FEEDBACK_SOUND        DATADIR "/sounds/beep.wav"
+
 //##############################################################################
 // Static variables
 //##############################################################################
@@ -216,4 +221,99 @@ void asound_set_volume(int volume)
 	snd_mixer_selem_get_playback_volume_range(m_elem, &pmin, &pmax);
 	long value = pmax * volume / 100;
 	snd_mixer_selem_set_playback_volume_all(m_elem, value);
+}
+
+gboolean asound_play_feedback()
+{
+	snd_pcm_t *handle;
+	snd_pcm_hw_params_t *params;
+	snd_pcm_uframes_t frames;
+	char *buffer;
+	int err, buffer_size, loops;
+	unsigned int period_time;
+	FILE *fp;
+	unsigned int rate = 44100;
+	size_t res;
+	snd_pcm_sframes_t delay;
+
+	fp = fopen(FEEDBACK_SOUND, "r");
+	if(!fp)
+	{
+		fprintf(stderr, "Error opening feedback sound file\n");
+		return FALSE;
+	}
+
+	if((err = snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK)) < 0)
+	{
+		fprintf(stderr, "Playback open error: %s\n", snd_strerror(err));
+		return FALSE;
+	}
+
+	snd_pcm_hw_params_alloca(&params);
+	snd_pcm_hw_params_any(handle, params);
+
+       	if((err = snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
+	{
+		printf("ERROR: Can't set interleaved mode. %s\n", snd_strerror(err));
+		return FALSE;
+	}
+	if((err = snd_pcm_hw_params_set_format(handle, params, SND_PCM_FORMAT_S16_LE)) < 0)
+	{	
+		printf("ERROR: Can't set format. %s\n", snd_strerror(err));
+		return FALSE;
+	}
+	if((err = snd_pcm_hw_params_set_channels(handle, params, 2)) < 0)
+	{
+		printf("ERROR: Can't set channels number. %s\n", snd_strerror(err));
+		return FALSE;
+	}
+	if((err = snd_pcm_hw_params_set_rate_near(handle, params, &rate, 0)) < 0)
+	{
+		printf("ERROR: Can't set rate. %s\n", snd_strerror(err));
+		return FALSE;
+	}
+	if((err = snd_pcm_hw_params(handle, params)) < 0)
+	{
+		printf("ERROR: Can't set hardware parameters. %s\n", snd_strerror(err));
+		return FALSE;
+	}
+	snd_pcm_hw_params_get_period_size(params, &frames, 0);
+	
+	buffer_size = frames * 4;
+	buffer = (char*)malloc(buffer_size);
+
+	snd_pcm_hw_params_get_period_time(params, &period_time, NULL);
+
+	for(loops = (0.2 * 1000000) / period_time; loops > 0; loops--) 
+	{
+		res = fread(buffer, sizeof(char), buffer_size, fp); 
+		if(res < buffer_size)
+		{ 
+			// Pad with zeros if we haven't written a whole period
+			int i;
+			for(i = res+1; i <= buffer_size; i++)
+			{
+				buffer[i] = '0';
+			}
+		}
+
+		if((err = snd_pcm_writei(handle, buffer, frames)) == -EPIPE) 
+		{
+			printf("XRUN.\n");
+			snd_pcm_prepare(handle);
+		} 
+		else if(err < 0) 
+		{
+			printf("ERROR. Can't write to the device. %s\n", snd_strerror(err));
+		}
+	}
+
+	snd_pcm_delay(handle, &delay);
+	usleep(delay * (period_time / frames));
+	snd_pcm_drain(handle);
+	snd_pcm_close(handle);
+	free(buffer);
+	fclose(fp);
+
+	return TRUE;
 }

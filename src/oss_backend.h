@@ -35,5 +35,6 @@ int oss_get_volume();
 gboolean oss_get_mute();
 const gchar * oss_get_channel();
 const GList * oss_get_channel_names();
+gboolean oss_play_feedback();
 
 #endif

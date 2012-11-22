@@ -26,12 +26,14 @@
 #include <fcntl.h>
 #include <assert.h>
 #include <stdlib.h>
-#include <glib/gstring.h>
 #include <glib/gstdio.h>
-#include <glib/glist.h>
-#include <glib/giochannel.h>
-
+#include <glib.h>
 #include "oss_backend.h"
+
+#ifndef DATADIR
+#define DATADIR "../data"
+#endif
+#define FEEDBACK_SOUND        DATADIR "/sounds/beep.wav"
 
 //##############################################################################
 // Static variables
@@ -59,13 +61,13 @@ static int get_raw_value()
 		return 0;
 
 	/*
-	If the control's type is MIXT_STEREOSLIDER16 or MIXT_MONOSLIDER16, we
-	map the value read from the ioctl to a 32-bit field comprised of two
-	16-bit values, with the left channel of a stereo control using the lower
-	16 bits.
-	Likewise, if the control's type has 8-bit precision, we map the values
-	to a 16-bit field.
-	*/
+	   If the control's type is MIXT_STEREOSLIDER16 or MIXT_MONOSLIDER16, we
+	   map the value read from the ioctl to a 32-bit field comprised of two
+	   16-bit values, with the left channel of a stereo control using the lower
+	   16 bits.
+	   Likewise, if the control's type has 8-bit precision, we map the values
+	   to a 16-bit field.
+	   */
 	struct { int16_t upper; int16_t lower; } * long_value;
 	struct { int8_t upper; int8_t lower; } * short_value;
 	switch(m_ext.type)
@@ -140,7 +142,7 @@ gboolean oss_get_mute()
 }
 
 void oss_setup(const gchar * card, const gchar * channel,
-	void (*volume_changed)(int,gboolean))
+		void (*volume_changed)(int,gboolean))
 {
 	// Make sure (for now) that the setup function only gets called once
 	static int oss_setup_called = 0;
@@ -171,10 +173,10 @@ void oss_setup(const gchar * card, const gchar * channel,
 	while(ioctl(m_mixer_fd, SNDCTL_MIX_EXTINFO, &m_ext) >= 0)
 	{
 		if(m_ext.type == MIXT_STEREOSLIDER16 || m_ext.type == MIXT_MONOSLIDER16 
-		    || m_ext.type == MIXT_STEREOSLIDER || m_ext.type == MIXT_MONOSLIDER)
+				|| m_ext.type == MIXT_STEREOSLIDER || m_ext.type == MIXT_MONOSLIDER)
 		{
 			m_channel_names = g_list_append(m_channel_names,
-				(gpointer)g_strdup(m_ext.extname));
+					(gpointer)g_strdup(m_ext.extname));
 		}
 		m_ext.ctrl++;
 	}
@@ -295,3 +297,90 @@ void oss_set_volume(int volume)
 	if(volume == 100)
 		m_actual_maxvalue = get_raw_value();
 }
+
+gboolean oss_play_feedback()
+{
+	// Open the input device with the appropriate mode
+	int tmp, fd, sample_rate;
+	char buffer[1024];
+	char *devmixer;
+	FILE *fp;
+	size_t buffer_size, res;
+
+	printf("Play sound!\n");
+
+	fp = fopen(FEEDBACK_SOUND, "r");
+	if(!fp)
+	{
+		fprintf(stderr, "Error opening feedback sound file\n");
+		return FALSE;
+	}
+
+	if((fd = open("/dev/dsp", O_WRONLY, 0)) == -1)
+	{
+		perror(devmixer);
+		return FALSE;
+	}
+
+	// Now set up the device
+	tmp = AFMT_S16_LE;		
+	if(ioctl(fd, SNDCTL_DSP_SETFMT, &tmp) == -1)
+	{
+		perror("SNDCTL_DSP_SETFMT");
+		return FALSE;
+	}
+
+	if(tmp != AFMT_S16_LE)
+	{
+		fprintf(stderr, "The device doesn't support the 16 bit sample format.\n");
+		return FALSE;
+	}
+
+	// Number of channels
+	tmp = 2;
+	if(ioctl(fd, SNDCTL_DSP_CHANNELS, &tmp) == -1)
+	{
+		perror("SNDCTL_DSP_CHANNELS");
+		return FALSE;
+	}
+
+	if(tmp != 2)
+	{
+		fprintf(stderr, "The device doesn't support stereo mode.\n");
+		return FALSE;
+	} 
+
+	// Sample rate
+	sample_rate = 44100;
+	if(ioctl(fd, SNDCTL_DSP_SPEED, &sample_rate) == -1)
+	{
+		perror("SNDCTL_DSP_SPEED");
+		return FALSE;
+	}
+
+	while(!feof(fp))
+	{
+		buffer_size = sizeof(buffer)/sizeof(buffer[0]);
+		res = fread(buffer, sizeof(buffer[0]), buffer_size, fp); 
+		if(res < buffer_size)
+		{
+			// Pad with zeros if we haven't written a whole period
+			int i;
+			for(i = res+1; i <= buffer_size; i++)
+			{
+				buffer[i] = '0';
+			}
+		}
+	    
+		if(write(fd, buffer, sizeof(buffer)) != sizeof(buffer))
+		{
+			perror("Audio write");
+			return FALSE;
+		}
+	}
+
+	fclose(fp);
+	close(fd);
+	return TRUE;
+}
+
