@@ -310,7 +310,6 @@ gboolean asound_play_feedback()
 
 	snd_pcm_delay(handle, &delay);
 	usleep(delay * (period_time / frames));
-	snd_pcm_drain(handle);
 	snd_pcm_close(handle);
 	free(buffer);
 	fclose(fp);

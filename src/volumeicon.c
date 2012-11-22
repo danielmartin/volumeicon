@@ -485,13 +485,9 @@ static void menu_preferences_on_activate(GtkMenuItem * menuitem,
 	g_signal_connect(G_OBJECT(gui->crt_hotkey), "toggled", G_CALLBACK(
 		preferences_crt_toggled), NULL);
 	g_signal_connect(G_OBJECT(gui->use_transparent_background_checkbutton), "toggled", G_CALLBACK(
-<<<<<<< HEAD
-		preferences_use_transparent_background_checkbutton_toggled), (gpointer)gui);
+		preferences_use_transparent_background_checkbutton_toggled), NULL);
 	g_signal_connect(G_OBJECT(gui->play_feedback_sound_checkbutton), "toggled", G_CALLBACK(
 		preferences_play_feedback_sounds_checkbutton_toggled), (gpointer)gui);
-=======
-		preferences_use_transparent_background_checkbutton_toggled), NULL);
->>>>>>> upstream/master
 
 	gtk_widget_show_all(gui->window);
 }
