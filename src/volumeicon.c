@@ -25,6 +25,7 @@
 #include <assert.h>
 #include <gtk/gtk.h>
 #include <glib/gstdio.h>
+#include <glib/gi18n.h>
 #include <signal.h>
 #include <unistd.h>
 
@@ -71,6 +72,33 @@ enum HOTKEY
 #define TIMER_INTERVAL 50
 
 //##############################################################################
+// Type definitions
+//##############################################################################
+typedef struct
+{
+	GtkBuilder * builder;
+	GtkWidget * window;
+	GtkAdjustment * volume_adjustment;
+	GtkEntry * mixer_entry;
+	GtkComboBox * channel_combobox;
+	GtkListStore * channel_store;
+	GtkComboBox * theme_combobox;
+	GtkListStore * theme_store;
+	GtkListStore * hotkey_store;
+	GtkButton * close_button;
+	GtkRadioButton * mute_radiobutton;
+	GtkRadioButton * slider_radiobutton;
+	GtkRadioButton * mmb_mute_radiobutton;
+	GtkRadioButton * mmb_mixer_radiobutton;
+	GtkCheckButton * use_horizontal_slider_checkbutton;
+	GtkCheckButton * show_sound_level_checkbutton;
+	GtkCellRenderer * cra_hotkey;
+	GtkCellRendererToggle * crt_hotkey;
+	GtkCheckButton * use_transparent_background_checkbutton;
+	GtkCheckButton * play_feedback_sound_checkbutton;
+} PreferencesGui;
+
+//##############################################################################
 // Static variables
 //##############################################################################
 #ifdef COMPILEWITH_NOTIFY
@@ -80,6 +108,7 @@ static GtkStatusIcon * m_status_icon = NULL;
 static GtkWidget * m_scale_window = NULL;
 static GtkWidget * m_scale = NULL;
 static gboolean m_setting_scale_value = FALSE;
+static PreferencesGui * gui = NULL;
 
 // Backend Interface
 static void (*backend_setup)(const gchar * card, const gchar * channel,
@@ -110,32 +139,6 @@ static void volume_icon_load_icons();
 static void scale_update();
 static void notification_show();
 
-//##############################################################################
-// Type definitions
-//##############################################################################
-typedef struct
-{
-	GtkBuilder * builder;
-	GtkWidget * window;
-	GtkAdjustment * volume_adjustment;
-	GtkEntry * mixer_entry;
-	GtkComboBox * channel_combobox;
-	GtkListStore * channel_store;
-	GtkComboBox * theme_combobox;
-	GtkListStore * theme_store;
-	GtkListStore * hotkey_store;
-	GtkButton * close_button;
-	GtkRadioButton * mute_radiobutton;
-	GtkRadioButton * slider_radiobutton;
-	GtkRadioButton * mmb_mute_radiobutton;
-	GtkRadioButton * mmb_mixer_radiobutton;
-	GtkCheckButton * use_horizontal_slider_checkbutton;
-	GtkCheckButton * show_sound_level_checkbutton;
-	GtkCellRenderer * cra_hotkey;
-	GtkCellRendererToggle * crt_hotkey;
-	GtkCheckButton * use_transparent_background_checkbutton;
-GtkCheckButton * play_feedback_sound_checkbutton;
-} PreferencesGui;
 
 //##############################################################################
 // Static functions
@@ -144,22 +147,20 @@ GtkCheckButton * play_feedback_sound_checkbutton;
 static gboolean preferences_window_delete_event(GtkWidget * widget,
 	GdkEvent * event, gpointer user_data)
 {
-	PreferencesGui * gui = (PreferencesGui*)user_data;
 	gtk_widget_destroy(gui->window);
 	return FALSE;
 }
 
 static void preferences_window_destroy(GObject * object, gpointer user_data)
 {
-	PreferencesGui * gui = (PreferencesGui*)user_data;
 	free(gui);
+	gui = NULL;
 	config_write();
 }
 
 static void preferences_close_button_clicked(GtkWidget * widget,
 	gpointer user_data)
 {
-	PreferencesGui * gui = (PreferencesGui*)user_data;
 	gtk_widget_destroy(gui->window);
 }
 
@@ -200,7 +201,6 @@ static void preferences_show_sound_level_checkbutton_toggled(GtkCheckButton * wi
 static void preferences_theme_combobox_changed(GtkComboBox * widget,
 	gpointer user_data)
 {
-	PreferencesGui * gui = (PreferencesGui*)user_data;
 	GtkTreeIter iter;
 
 	// Get the theme from the combobox
@@ -219,7 +219,6 @@ static void preferences_theme_combobox_changed(GtkComboBox * widget,
 static void preferences_channel_combobox_changed(GtkComboBox * widget,
 	gpointer user_data)
 {
-	PreferencesGui * gui = (PreferencesGui*)user_data;
 	GtkTreeIter iter;
 
 	// Get the channel from the combobox
@@ -241,21 +240,18 @@ static void preferences_channel_combobox_changed(GtkComboBox * widget,
 static void preferences_volume_adjustment_changed(GtkSpinButton * spinbutton,
 	gpointer user_data)
 {
-	PreferencesGui * gui = (PreferencesGui*)user_data;
 	config_set_stepsize((int)gtk_adjustment_get_value(gui->volume_adjustment));
 }
 
 static void preferences_mixer_entry_changed(GtkEditable * editable,
 	gpointer user_data)
 {
-	PreferencesGui * gui = (PreferencesGui*)user_data;
 	config_set_helper(gtk_entry_get_text(gui->mixer_entry));
 }
 
 static void preferences_crt_toggled(GtkCellRendererToggle * cell_renderer,
 	gchar * path, gpointer user_data)
 {
-	PreferencesGui * gui = (PreferencesGui*)user_data;
 	GtkTreeIter iter;
 
 	if(gtk_tree_model_get_iter_from_string(GTK_TREE_MODEL(gui->hotkey_store), &iter, path))
@@ -292,7 +288,6 @@ static void preferences_cra_accel_edited(GtkCellRendererAccel * renderer,
 	gchar * path, guint accel_key, GdkModifierType mask, guint hardware_keycode,
 	gpointer user_data)
 {
-	PreferencesGui * gui = (PreferencesGui*)user_data;
 	GtkTreeIter iter;
 	
 	if(gtk_tree_model_get_iter_from_string(GTK_TREE_MODEL(gui->hotkey_store), &iter, path))
@@ -347,7 +342,13 @@ static void preferences_play_feedback_sounds_checkbutton_toggled(GtkCheckButton 
 static void menu_preferences_on_activate(GtkMenuItem * menuitem,
 	gpointer user_data)
 {
-	PreferencesGui * gui = (PreferencesGui*)malloc(sizeof(PreferencesGui));
+
+	if( gui ){
+		gtk_window_present(gui->window);
+		return;
+	}
+
+	gui = (PreferencesGui*)malloc(sizeof(PreferencesGui));
 
 	gui->builder = gtk_builder_new();
 	gtk_builder_add_from_file(gui->builder, PREFERENCES_UI_FILE, NULL);
@@ -444,13 +445,13 @@ static void menu_preferences_on_activate(GtkMenuItem * menuitem,
 
 	// Fill the hotkey binding model
 	gtk_list_store_append(gui->hotkey_store, &tree_iter);
-	gtk_list_store_set(gui->hotkey_store, &tree_iter, 0, "Volume Up", 1,
+	gtk_list_store_set(gui->hotkey_store, &tree_iter, 0, _("Volume Up"), 1,
 		config_get_hotkey_up(), 2, (int)UP, 3, config_get_hotkey_up_enabled(), -1);
 	gtk_list_store_append(gui->hotkey_store, &tree_iter);
-	gtk_list_store_set(gui->hotkey_store, &tree_iter, 0, "Volume Down", 1,
+	gtk_list_store_set(gui->hotkey_store, &tree_iter, 0, _("Volume Down"), 1,
 		config_get_hotkey_down(), 2, (int)DOWN, 3, config_get_hotkey_down_enabled(), -1);
 	gtk_list_store_append(gui->hotkey_store, &tree_iter);
-	gtk_list_store_set(gui->hotkey_store, &tree_iter, 0, "Mute", 1,
+	gtk_list_store_set(gui->hotkey_store, &tree_iter, 0, _("Mute"), 1,
 		config_get_hotkey_mute(), 2, (int)MUTE, 3, config_get_hotkey_mute_enabled(), -1);
 
 	// Initialize widgets / connect signals
@@ -458,35 +459,39 @@ static void menu_preferences_on_activate(GtkMenuItem * menuitem,
 	gtk_adjustment_set_value(gui->volume_adjustment,
 		(gdouble)config_get_stepsize());
 	g_signal_connect(G_OBJECT(gui->window), "destroy", G_CALLBACK(
-		preferences_window_destroy), (gpointer)gui);
+		preferences_window_destroy), NULL);
 	g_signal_connect(G_OBJECT(gui->window), "delete-event", G_CALLBACK(
-		preferences_window_delete_event), (gpointer)gui);
+		preferences_window_delete_event), NULL);
 	g_signal_connect(G_OBJECT(gui->close_button), "clicked", G_CALLBACK(
-		preferences_close_button_clicked), (gpointer)gui);
+		preferences_close_button_clicked), NULL);
 	g_signal_connect(G_OBJECT(gui->channel_combobox), "changed", G_CALLBACK(
-		preferences_channel_combobox_changed), (gpointer)gui);
+		preferences_channel_combobox_changed), NULL);
 	g_signal_connect(G_OBJECT(gui->theme_combobox), "changed", G_CALLBACK(
-		preferences_theme_combobox_changed), (gpointer)gui);
+		preferences_theme_combobox_changed), NULL);
 	g_signal_connect(G_OBJECT(gui->volume_adjustment), "value-changed",
-		G_CALLBACK(preferences_volume_adjustment_changed), (gpointer)gui);
+		G_CALLBACK(preferences_volume_adjustment_changed), NULL);
 	g_signal_connect(G_OBJECT(gui->mixer_entry), "changed", G_CALLBACK(
-		preferences_mixer_entry_changed), (gpointer)gui);
+		preferences_mixer_entry_changed), NULL);
 	g_signal_connect(G_OBJECT(gui->mute_radiobutton), "toggled", G_CALLBACK(
-		preferences_mute_radiobutton_toggled), (gpointer)gui);
+		preferences_mute_radiobutton_toggled), NULL);
 	g_signal_connect(G_OBJECT(gui->mmb_mixer_radiobutton), "toggled", G_CALLBACK(
-		preferences_mmb_radiobutton_toggled), (gpointer)gui);
+		preferences_mmb_radiobutton_toggled), NULL);
 	g_signal_connect(G_OBJECT(gui->use_horizontal_slider_checkbutton), "toggled", G_CALLBACK(
-		preferences_use_horizontal_slider_checkbutton_toggled), (gpointer)gui);
+		preferences_use_horizontal_slider_checkbutton_toggled), NULL);
 	g_signal_connect(G_OBJECT(gui->show_sound_level_checkbutton), "toggled", G_CALLBACK(
-		preferences_show_sound_level_checkbutton_toggled), (gpointer)gui);
+		preferences_show_sound_level_checkbutton_toggled), NULL);
 	g_signal_connect(G_OBJECT(gui->cra_hotkey), "accel-edited", G_CALLBACK(
-		preferences_cra_accel_edited), (gpointer)gui);
+		preferences_cra_accel_edited), NULL);
 	g_signal_connect(G_OBJECT(gui->crt_hotkey), "toggled", G_CALLBACK(
-		preferences_crt_toggled), (gpointer)gui);
+		preferences_crt_toggled), NULL);
 	g_signal_connect(G_OBJECT(gui->use_transparent_background_checkbutton), "toggled", G_CALLBACK(
+<<<<<<< HEAD
 		preferences_use_transparent_background_checkbutton_toggled), (gpointer)gui);
 	g_signal_connect(G_OBJECT(gui->play_feedback_sound_checkbutton), "toggled", G_CALLBACK(
 		preferences_play_feedback_sounds_checkbutton_toggled), (gpointer)gui);
+=======
+		preferences_use_transparent_background_checkbutton_toggled), NULL);
+>>>>>>> upstream/master
 
 	gtk_widget_show_all(gui->window);
 }
@@ -651,7 +656,7 @@ static void status_icon_on_popup_menu(GtkStatusIcon * status_icon, guint button,
 {
 	GtkWidget * gtkMenu = gtk_menu_new();
 
-	GtkWidget * volcontrol = gtk_image_menu_item_new_with_label("Open Mixer");
+	GtkWidget * volcontrol = gtk_image_menu_item_new_with_label(_("Open Mixer"));
 	GtkWidget * separator1 = gtk_separator_menu_item_new();
 	GtkWidget * preferences = gtk_image_menu_item_new_from_stock(
 		"gtk-preferences", NULL);
@@ -984,7 +989,19 @@ static void hotkey_handle(const char * key, void * user_data)
 //##############################################################################
 int main(int argc, char * argv[])
 {
-	gtk_init(&argc, &argv);
+    bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR);
+    bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8");
+    textdomain(GETTEXT_PACKAGE);
+
+	// Initialize gtk with arguments
+	GError **errors = 0;
+	gchar * config_name = 0;
+	GOptionEntry options[] = {
+		{ "config", 'c', 0, G_OPTION_ARG_FILENAME, &config_name,
+			_("Alternate name to use for config file, default is volumeicon"), "name" },
+		{ NULL }
+	};
+	gtk_init_with_args(&argc, &argv, "", options, "", errors);
 	signal(SIGCHLD, SIG_IGN);
 
 	// Setup OSD Notification
@@ -1029,7 +1046,7 @@ int main(int argc, char * argv[])
 	#endif
 
 	// Setup
-	config_initialize();
+	config_initialize(config_name);
 	backend_setup(config_get_card(), config_get_channel(), volume_icon_on_volume_changed);
 	m_volume = backend_get_volume();
 	m_mute = backend_get_mute();
