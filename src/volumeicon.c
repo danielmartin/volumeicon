@@ -137,8 +137,8 @@ static void status_icon_update(gboolean mute, gboolean force);
 static void hotkey_handle(const char * key, void * user_data);
 static void volume_icon_load_icons();
 static void scale_update();
+static void scale_apply_changes(GtkRange * range, gpointer user_data);
 static void notification_show();
-
 
 //##############################################################################
 // Static functions
@@ -800,6 +800,38 @@ static void volume_icon_load_icons()
 	icons_loaded = 1;
 }
 
+static void scale_apply_changes(GtkRange * range, gpointer user_data)
+{
+	if(m_setting_scale_value)
+		return;
+
+	double previous = *(double*)user_data;
+	double value = gtk_range_get_value(range);
+
+	if(previous != value)
+	{
+		*(double*)user_data = value;
+		m_volume = (int)value;
+
+		if(m_volume < 0)
+			m_volume = 0;
+		if(m_volume > 100)
+			m_volume = 100;
+		backend_set_volume(m_volume);
+		if(m_mute)
+		{
+			m_mute = FALSE;
+			backend_set_mute(m_mute);
+		}
+		// Play a feedback sound if the user wants
+		if(config_get_play_feedback_sounds())
+			backend_play_feedback();
+
+		status_icon_update(m_mute, FALSE);
+		scale_update();
+	}
+}
+
 static void scale_update()
 {
 	assert(m_scale != NULL);
@@ -808,25 +840,22 @@ static void scale_update()
 	m_setting_scale_value = FALSE;
 }
 
-static void scale_value_changed(GtkRange * range, gpointer user_data)
+gboolean scale_button_released(GtkRange * range, gpointer user_data)
 {
-	if(m_setting_scale_value)
-		return;
-	double value = gtk_range_get_value(range);
-	m_volume = (int)value;
+	scale_apply_changes(range, user_data);	
+	return FALSE;
+}
 
-	if(m_volume < 0)
-		m_volume = 0;
-	if(m_volume > 100)
-		m_volume = 100;
-	backend_set_volume(m_volume);
-	if(m_mute)
-	{
-		m_mute = FALSE;
-		backend_set_mute(m_mute);
-	}
-	status_icon_update(m_mute, FALSE);
-	scale_update();
+gboolean scale_key_released(GtkRange * range, gpointer user_data)
+{
+	scale_apply_changes(range, user_data);	
+	return FALSE;
+}
+
+gboolean scale_focus_out(GtkRange * range, gpointer user_data)
+{
+	scale_apply_changes(range, user_data);	
+	return FALSE;
 }
 
 static void notification_show()
@@ -903,6 +932,7 @@ static void on_composited_changed (GtkWidget* window, gpointer user_data)
 static void scale_setup()
 {
 	GdkScreen *screen;
+	gdouble old_scale;
 
 	if(config_get_use_horizontal_slider())
 		m_scale = gtk_hscale_new_with_range(0.0, 100.0, 1.0);
@@ -949,8 +979,14 @@ static void scale_setup()
 	gtk_widget_show(m_scale);
 	scale_update();
 
-	g_signal_connect(G_OBJECT(m_scale), "value-changed",
-		G_CALLBACK(scale_value_changed), NULL);
+	old_scale = -1.0;
+
+	g_signal_connect(G_OBJECT(m_scale), "button-release-event",
+		G_CALLBACK(scale_button_released), &old_scale);	
+	g_signal_connect(G_OBJECT(m_scale), "focus-out-event",
+		G_CALLBACK(scale_focus_out), &old_scale);	
+	g_signal_connect(G_OBJECT(m_scale), "key-release-event",
+		G_CALLBACK(scale_key_released), &old_scale);	
 	g_signal_connect(G_OBJECT(m_scale_window), "composited-changed",
 		G_CALLBACK(on_composited_changed), NULL);
 }
